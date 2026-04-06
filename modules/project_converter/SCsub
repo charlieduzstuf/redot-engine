@@ -6,5 +6,11 @@ Import("env_modules")
 
 env_pc = env_modules.Clone()
 
+env_pc.add_source_files(env.modules_sources, "register_types.cpp")
+
 if env.editor_build:
-    env_pc.add_source_files(env.modules_sources, "*.cpp")
+    env_pc.add_source_files(env.modules_sources, "gdevelop_converter.cpp")
+    env_pc.add_source_files(env.modules_sources, "project_converter_plugin.cpp")
+    env_pc.add_source_files(env.modules_sources, "scratch_converter.cpp")
+    env_pc.add_source_files(env.modules_sources, "source_converter.cpp")
+    env_pc.add_source_files(env.modules_sources, "unreal_converter.cpp")
