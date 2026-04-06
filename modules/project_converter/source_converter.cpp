@@ -38,6 +38,7 @@
 #include "core/io/file_access.h"
 #include "core/math/color.h"
 #include "core/math/vector3.h"
+#include "core/string/char_utils.h"
 #include "core/string/ustring.h"
 #include "core/templates/vector.h"
 

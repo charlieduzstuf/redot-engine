@@ -133,6 +133,8 @@ const {category.capitalize()}TranslationList _{category}_translations[] = {{
 };
 """)
 
+    write_translation_header(target_h, category)
+
 
 # --------------------------------------------------------------------
 # From master: Unity vendor builder
