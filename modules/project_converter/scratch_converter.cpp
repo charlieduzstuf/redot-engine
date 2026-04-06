@@ -263,7 +263,8 @@ String ScratchConverter::_block_to_gdscript(const String &p_block_id, const Dict
 	// --- Motion ---
 	if (opcode == "motion_movesteps") {
 		String steps = _input_to_expr(p_block_id, "STEPS", p_blocks);
-		return ind + "position += Vector2(cos(deg_to_rad(rotation_degrees - 90.0)), -sin(deg_to_rad(rotation_degrees - 90.0))) * " + steps + "\n";
+		// rotation (radians) in Godot's Node2D gives the facing direction directly.
+		return ind + "position += Vector2(cos(rotation), sin(rotation)) * " + steps + "\n";
 	}
 	if (opcode == "motion_turnright") {
 		String deg = _input_to_expr(p_block_id, "DEGREES", p_blocks);
