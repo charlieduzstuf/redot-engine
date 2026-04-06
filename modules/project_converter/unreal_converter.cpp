@@ -208,7 +208,13 @@ Vector<UnrealActor> UnrealConverter::parse_t3d(const String &p_content) {
 	Vector<String> lines = p_content.split("\n");
 
 	// Simple stack-based parser
-	enum T3DState { S_NONE, S_MAP, S_LEVEL, S_ACTOR, S_OBJECT };
+	enum T3DState {
+		S_NONE,
+		S_MAP,
+		S_LEVEL,
+		S_ACTOR,
+		S_OBJECT
+	};
 	T3DState state = S_NONE;
 	UnrealActor current_actor;
 	HashMap<String, String> current_component_props;
@@ -365,7 +371,7 @@ String UnrealConverter::_generate_t3d_tscn(const Vector<UnrealActor> &p_actors) 
 		const UnrealActor &actor = p_actors[i];
 		String godot_type = _unreal_class_to_godot_type(actor.class_name);
 		String node_name = actor.label.is_empty() ? actor.name : actor.label;
-		// Sanitise name for .tscn
+		// Sanitize name for .tscn
 		node_name = node_name.replace(" ", "_").replace("/", "_").replace("\\", "_");
 		if (node_name.is_empty()) {
 			node_name = "Actor_" + itos(i);

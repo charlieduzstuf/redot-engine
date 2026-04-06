@@ -40,8 +40,8 @@
 #include "core/math/vector3.h"
 #include "core/string/char_utils.h"
 #include "core/string/ustring.h"
-#include "core/templates/vector.h"
 #include "core/templates/hash_set.h"
+#include "core/templates/vector.h"
 
 // ---------------------------------------------------------------------------
 // VKV parser
@@ -248,7 +248,7 @@ Error SourceConverter::convert_vmt(const String &p_vmt_path, const String &p_out
 
 	Vector<VKVNode> nodes = parse_vkv(content);
 	if (nodes.is_empty()) {
-		print_error("SourceConverter: empty or unparseable VMT: " + p_vmt_path);
+		print_error("SourceConverter: empty or unparsable VMT: " + p_vmt_path);
 		return ERR_PARSE_ERROR;
 	}
 
@@ -501,7 +501,7 @@ String SourceConverter::_generate_vmf_tscn(const Vector<VKVNode> &p_world_nodes,
 		Vector3 origin = _parse_vkv_vector3(origin_str);
 		// Convert Source → Godot coordinates
 		Vector3 godot_origin(origin.x, origin.z, -origin.y);
-		// Scale: Source units to metres (approximate: 1 unit ≈ 0.01905 m)
+		// Scale: Source units to meters (approximate: 1 unit ≈ 0.01905 m)
 		godot_origin *= 0.01905f;
 
 		String godot_type = "Node3D";
@@ -602,7 +602,12 @@ Error SourceConverter::convert_smd(const String &p_smd_path, const String &p_out
 	Vector<String> lines = content.split("\n");
 
 	// Parse sections: nodes, skeleton, triangles
-	enum Section { NONE, NODES, SKELETON, TRIANGLES };
+	enum Section {
+		NONE,
+		NODES,
+		SKELETON,
+		TRIANGLES
+	};
 	Section cur_section = NONE;
 
 	// OBJ output buffers

@@ -34,10 +34,10 @@
 
 #ifdef TOOLS_ENABLED
 
+#include "core/error/error_list.h"
 #include "core/string/ustring.h"
 #include "core/variant/array.h"
 #include "core/variant/dictionary.h"
-#include "core/error/error_list.h"
 
 // Converts a Scratch 3 (.sb3) project file to a Godot scene (.tscn) with
 // GDScript files representing each sprite's block scripts.
