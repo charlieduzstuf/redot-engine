@@ -41,6 +41,7 @@
 #include "core/string/char_utils.h"
 #include "core/string/ustring.h"
 #include "core/templates/vector.h"
+#include "core/templates/hash_set.h"
 
 // ---------------------------------------------------------------------------
 // VKV parser
@@ -274,23 +275,66 @@ Error SourceConverter::convert_vmt(const String &p_vmt_path, const String &p_out
 }
 
 String SourceConverter::_generate_vmt_tres(const String &p_shader_type, const Vector<VKVNode> &p_params) {
+	String shader_lower = p_shader_type.to_lower();
+
+	// Collect textures to emit as ext_resources
+	String base_texture = _vkv_get(p_params, "$basetexture");
+	String bumpmap = _vkv_get(p_params, "$bumpmap");
+	if (bumpmap.is_empty()) {
+		bumpmap = _vkv_get(p_params, "$normalmap");
+	}
+	String selfillum_mask = _vkv_get(p_params, "$selfillummask");
+
+	int res_id = 1;
+	String ext_resources;
+	int base_tex_id = -1;
+	int bump_tex_id = -1;
+	int emit_tex_id = -1;
+
+	if (!base_texture.is_empty()) {
+		base_tex_id = res_id++;
+		String tex_path = "res://imported/" + base_texture.replace("\\", "/").to_lower() + ".png";
+		ext_resources += "[ext_resource type=\"Texture2D\" path=\"" + tex_path + "\" id=\"" + itos(base_tex_id) + "\"]\n";
+	}
+	if (!bumpmap.is_empty()) {
+		bump_tex_id = res_id++;
+		String tex_path = "res://imported/" + bumpmap.replace("\\", "/").to_lower() + ".png";
+		ext_resources += "[ext_resource type=\"Texture2D\" path=\"" + tex_path + "\" id=\"" + itos(bump_tex_id) + "\"]\n";
+	}
+	if (!selfillum_mask.is_empty()) {
+		emit_tex_id = res_id++;
+		String tex_path = "res://imported/" + selfillum_mask.replace("\\", "/").to_lower() + ".png";
+		ext_resources += "[ext_resource type=\"Texture2D\" path=\"" + tex_path + "\" id=\"" + itos(emit_tex_id) + "\"]\n";
+	}
+
+	int load_steps = (ext_resources.is_empty()) ? 1 : res_id;
 	String out;
-	out += "[gd_resource type=\"StandardMaterial3D\" format=3]\n\n";
+	out += "[gd_resource type=\"StandardMaterial3D\" load_steps=" + itos(load_steps) + " format=3]\n\n";
+	if (!ext_resources.is_empty()) {
+		out += ext_resources + "\n";
+	}
 	out += "[resource]\n";
 
-	// Map common VMT parameters to StandardMaterial3D properties
-	String base_texture = _vkv_get(p_params, "$basetexture");
-	if (!base_texture.is_empty()) {
-		// Texture path will need to be re-mapped; emit as comment and ext_resource stub
-		out += "# albedo_texture from $basetexture: " + base_texture + "\n";
+	// Shader-type-specific settings
+	if (shader_lower == "unlitgeneric") {
+		out += "shading_mode = 2\n"; // SHADING_MODE_UNSHADED
+	} else if (shader_lower == "lightmappedgeneric") {
+		out += "# lightmapped_generic: baked lighting handled by LightmapGI\n";
+	} else if (shader_lower == "refract") {
+		out += "refraction_enabled = true\n";
+		String refract_amount = _vkv_get(p_params, "$refractamount", "0.05");
+		out += "refraction_scale = " + refract_amount + "\n";
+	} else if (shader_lower == "water") {
+		out += "# water shader: use a custom ShaderMaterial for full water effects\n";
+		out += "shading_mode = 0\n"; // start with unshaded as base
 	}
 
-	String bumpmap = _vkv_get(p_params, "$bumpmap");
-	if (!bumpmap.is_empty()) {
-		out += "# normal_texture from $bumpmap: " + bumpmap + "\n";
-		out += "normal_enabled = true\n";
+	// Albedo texture
+	if (base_tex_id >= 0) {
+		out += "albedo_texture = ExtResource(\"" + itos(base_tex_id) + "\")\n";
 	}
 
+	// Albedo color
 	String color_str = _vkv_get(p_params, "$color");
 	if (color_str.is_empty()) {
 		color_str = _vkv_get(p_params, "$color2");
@@ -300,27 +344,58 @@ String SourceConverter::_generate_vmt_tres(const String &p_shader_type, const Ve
 		out += "albedo_color = Color(" + rtos(c.r) + ", " + rtos(c.g) + ", " + rtos(c.b) + ", " + rtos(c.a) + ")\n";
 	}
 
-	String alpha_test = _vkv_get(p_params, "$alphatest");
-	if (alpha_test == "1") {
-		out += "transparency = 1\n"; // TRANSPARENCY_ALPHA_SCISSOR
+	// Normal map
+	if (bump_tex_id >= 0) {
+		out += "normal_enabled = true\n";
+		out += "normal_texture = ExtResource(\"" + itos(bump_tex_id) + "\")\n";
 	}
 
+	// Transparency / alpha modes
+	String alpha_test = _vkv_get(p_params, "$alphatest");
+	String translucent = _vkv_get(p_params, "$translucent");
+	if (alpha_test == "1") {
+		out += "transparency = 1\n"; // ALPHA_SCISSOR
+	} else if (translucent == "1") {
+		out += "transparency = 1\n"; // ALPHA
+	}
+
+	// Additive blend
+	String additive = _vkv_get(p_params, "$additive");
+	if (additive == "1") {
+		out += "blend_mode = 1\n"; // ADD
+	}
+
+	// Emissive / self-illumination
+	String selfillum = _vkv_get(p_params, "$selfillum");
+	if (selfillum == "1") {
+		out += "emission_enabled = true\n";
+		if (emit_tex_id >= 0) {
+			out += "emission_texture = ExtResource(\"" + itos(emit_tex_id) + "\")\n";
+		}
+	}
+
+	// Specular / metallic from envmap
+	String envmap = _vkv_get(p_params, "$envmap");
+	if (!envmap.is_empty()) {
+		String envmap_tint = _vkv_get(p_params, "$envmaptint", "1");
+		out += "metallic = " + envmap_tint + "\n";
+		out += "metallic_specular = " + envmap_tint + "\n";
+	}
+
+	// No-cull (two-sided)
 	String no_cull = _vkv_get(p_params, "$nocull");
 	if (no_cull == "1") {
 		out += "cull_mode = 2\n"; // CULL_DISABLED
 	}
 
-	// Source shader type hints
-	if (p_shader_type.to_lower() == "unlitgeneric") {
-		out += "shading_mode = 0\n"; // SHADING_MODE_UNSHADED
+	// Ignored parameters
+	String nodecal = _vkv_get(p_params, "$nodecal");
+	if (nodecal == "1") {
+		out += "# $nodecal: decal projection disabled\n";
 	}
-	if (p_shader_type.to_lower() == "lightmappedgeneric") {
-		out += "# lightmapped generic - consider using lightmap GI\n";
-	}
-
-	String emissive = _vkv_get(p_params, "$selfillum");
-	if (emissive == "1") {
-		out += "emission_enabled = true\n";
+	String no_draw = _vkv_get(p_params, "$no_draw");
+	if (no_draw == "1") {
+		out += "# $no_draw: this surface is invisible in Source; consider hiding the mesh\n";
 	}
 
 	return out;
@@ -378,7 +453,7 @@ String SourceConverter::_generate_vmf_tscn(const Vector<VKVNode> &p_world_nodes,
 	int entity_count = (int)p_entities.size();
 
 	out += "[gd_scene load_steps=" + itos(1 + solid_count + entity_count) + " format=3]\n\n";
-	out += "[node name=\"VMFMap\" type=\"Node3D\"]\n\n";
+	out += "[node name=\"World\" type=\"Node3D\"]\n\n";
 
 	// World brushes
 	int brush_idx = 0;
@@ -659,6 +734,30 @@ Error SourceConverter::convert_smd(const String &p_smd_path, const String &p_out
 	}
 	out_fa->store_string(obj_out);
 	print_line("SourceConverter: wrote mesh " + out_path);
+
+	// Write companion .mtl file listing unique materials
+	HashSet<String> seen_materials;
+	String mtl_out;
+	mtl_out += "# MTL for " + base_name + "\n";
+	for (int fi = 0; fi < faces.size(); fi++) {
+		const String &mat = faces[fi].material;
+		if (!mat.is_empty() && !seen_materials.has(mat)) {
+			seen_materials.insert(mat);
+			mtl_out += "newmtl " + mat + "\n";
+			mtl_out += "Ka 1.0 1.0 1.0\n";
+			mtl_out += "Kd 1.0 1.0 1.0\n";
+			mtl_out += "Ks 0.0 0.0 0.0\n";
+			// Reference a texture if one can be inferred from the material name
+			String tex_name = mat.get_file().is_empty() ? mat : mat.get_file();
+			mtl_out += "map_Kd " + tex_name + ".png\n\n";
+		}
+	}
+	String mtl_path = p_output_dir.path_join(base_name + ".mtl");
+	Ref<FileAccess> mtl_fa = FileAccess::open(mtl_path, FileAccess::WRITE);
+	if (mtl_fa.is_valid()) {
+		mtl_fa->store_string(mtl_out);
+		print_line("SourceConverter: wrote material library " + mtl_path);
+	}
 	return OK;
 }
 

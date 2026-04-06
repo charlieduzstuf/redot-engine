@@ -227,6 +227,18 @@ String ScratchConverter::_chain_to_gdscript(const String &p_hat_id, const Dictio
 		func_sig = "func _on_key_" + key_name.replace(" ", "_") + "_pressed():";
 	} else if (opcode == "event_whenstageclicked" || opcode == "event_whenthisspriteclicked") {
 		func_sig = "func _on_clicked():";
+	} else if (opcode == "event_whenbroadcastreceived") {
+		Dictionary fields = hat_blk.get("fields", Dictionary());
+		Dictionary msg_field = fields.get("BROADCAST_OPTION", Dictionary());
+		String msg = msg_field.get("0", "message");
+		func_sig = "func _on_broadcast_" + msg.replace(" ", "_").to_lower() + "():";
+	} else if (opcode == "event_whenbackdropswitchesto") {
+		Dictionary fields = hat_blk.get("fields", Dictionary());
+		Dictionary bd_field = fields.get("BACKDROP", Dictionary());
+		String backdrop = bd_field.get("0", "backdrop1");
+		func_sig = "func _on_backdrop_" + backdrop.replace(" ", "_").to_lower() + "():";
+	} else if (opcode == "control_start_as_clone") {
+		func_sig = "func _on_clone_start():";
 	} else {
 		func_sig = "func _on_" + opcode.replace(":", "_") + "():";
 	}
@@ -307,6 +319,43 @@ String ScratchConverter::_block_to_gdscript(const String &p_block_id, const Dict
 		String dir = _input_to_expr(p_block_id, "DIRECTION", p_blocks);
 		return ind + "rotation_degrees = " + dir + " - 90.0\n";
 	}
+	if (opcode == "motion_goto") {
+		String target = _input_to_expr(p_block_id, "TO", p_blocks);
+		if (target == "\"_random_\"") {
+			return ind + "position = Vector2(randf_range(-240.0, 240.0), randf_range(-180.0, 180.0))\n";
+		} else if (target == "\"_mouse_\"") {
+			return ind + "position = get_viewport().get_mouse_position()\n";
+		}
+		return ind + "if has_node(\"../\" + " + target + "):\n" +
+				_indent(p_indent + 1) + "position = get_node(\"../\" + " + target + ").position\n";
+	}
+	if (opcode == "motion_glidesecstoxy") {
+		String secs = _input_to_expr(p_block_id, "SECS", p_blocks);
+		String tx = _input_to_expr(p_block_id, "X", p_blocks);
+		String ty = _input_to_expr(p_block_id, "Y", p_blocks);
+		return ind + "create_tween().tween_property(self, \"position\", Vector2(" + tx + ", -(" + ty + ")), " + secs + ")\n" +
+				ind + "await get_tree().create_timer(" + secs + ").timeout\n";
+	}
+	if (opcode == "motion_pointtowards") {
+		String target = _input_to_expr(p_block_id, "TOWARDS", p_blocks);
+		if (target == "\"_mouse_\"") {
+			return ind + "look_at(get_viewport().get_mouse_position())\n";
+		}
+		return ind + "if has_node(\"../\" + " + target + "):\n" +
+				_indent(p_indent + 1) + "look_at(get_node(\"../\" + " + target + ").position)\n";
+	}
+	if (opcode == "motion_ifonedgebounce") {
+		String ind1 = _indent(p_indent + 1);
+		return ind + "if position.x < -240.0 or position.x > 240.0 or position.y < -180.0 or position.y > 180.0:\n" +
+				ind1 + "rotation_degrees = -rotation_degrees\n" +
+				ind1 + "position = position.clamp(Vector2(-240.0, -180.0), Vector2(240.0, 180.0))\n";
+	}
+	if (opcode == "motion_setrotationstyle") {
+		Dictionary fields = blk.get("fields", Dictionary());
+		Dictionary style_field = fields.get("STYLE", Dictionary());
+		String style = style_field.get("0", "all around");
+		return ind + "# set rotation style: " + style + "\n";
+	}
 
 	// --- Looks ---
 	if (opcode == "looks_say") {
@@ -345,6 +394,50 @@ String ScratchConverter::_block_to_gdscript(const String &p_block_id, const Dict
 		String change = _input_to_expr(p_block_id, "CHANGE", p_blocks);
 		return ind + "scale += Vector2.ONE * (" + change + " / 100.0)\n";
 	}
+	if (opcode == "looks_switchbackdropto") {
+		String backdrop = _input_to_expr(p_block_id, "BACKDROP", p_blocks);
+		return ind + "if has_node(\"/root/Stage\"):\n" +
+				_indent(p_indent + 1) + "get_node(\"/root/Stage\").play(" + backdrop + ")\n";
+	}
+	if (opcode == "looks_nextbackdrop") {
+		return ind + "# looks_nextbackdrop: advance to the next backdrop on the stage\n";
+	}
+	if (opcode == "looks_changeeffectby") {
+		Dictionary fields = blk.get("fields", Dictionary());
+		Dictionary eff_field = fields.get("EFFECT", Dictionary());
+		String effect = eff_field.get("0", "COLOR");
+		String change = _input_to_expr(p_block_id, "CHANGE", p_blocks);
+		return ind + "# looks_changeeffectby: " + effect + " by " + change + "\n";
+	}
+	if (opcode == "looks_seteffectto") {
+		Dictionary fields = blk.get("fields", Dictionary());
+		Dictionary eff_field = fields.get("EFFECT", Dictionary());
+		String effect = eff_field.get("0", "COLOR");
+		String val = _input_to_expr(p_block_id, "VALUE", p_blocks);
+		return ind + "# looks_seteffectto: " + effect + " = " + val + "\n";
+	}
+	if (opcode == "looks_cleargraphiceffects") {
+		return ind + "# looks_cleargraphiceffects: reset all graphic effects\n";
+	}
+	if (opcode == "looks_gotofrontback") {
+		Dictionary fields = blk.get("fields", Dictionary());
+		Dictionary fb_field = fields.get("FRONT_BACK", Dictionary());
+		String front_back = fb_field.get("0", "front");
+		if (front_back == "front") {
+			return ind + "z_index = 100\n";
+		}
+		return ind + "z_index = -100\n";
+	}
+	if (opcode == "looks_goforwardbackwardlayers") {
+		Dictionary fields = blk.get("fields", Dictionary());
+		Dictionary fb_field = fields.get("FORWARD_BACKWARD", Dictionary());
+		String dir = fb_field.get("0", "forward");
+		String layers = _input_to_expr(p_block_id, "NUM", p_blocks);
+		if (dir == "forward") {
+			return ind + "z_index += " + layers + "\n";
+		}
+		return ind + "z_index -= " + layers + "\n";
+	}
 
 	// --- Sound ---
 	if (opcode == "sound_play") {
@@ -358,7 +451,32 @@ String ScratchConverter::_block_to_gdscript(const String &p_block_id, const Dict
 				ind + "await _play_sound_until_done(" + sound + ")\n";
 	}
 	if (opcode == "sound_stopallsounds") {
-		return ind + "# stop all sounds\n";
+		return ind + "AudioServer.set_bus_mute(AudioServer.get_bus_index(\"Master\"), true)\n";
+	}
+	if (opcode == "sound_changevolumeby") {
+		String vol = _input_to_expr(p_block_id, "VOLUME", p_blocks);
+		return ind + "AudioServer.set_bus_volume_db(0, AudioServer.get_bus_volume_db(0) + " + vol + ")\n";
+	}
+	if (opcode == "sound_setvolumeto") {
+		String vol = _input_to_expr(p_block_id, "VOLUME", p_blocks);
+		return ind + "AudioServer.set_bus_volume_db(0, linear_to_db(" + vol + " * 0.01))\n";
+	}
+	if (opcode == "sound_changeeffectby") {
+		Dictionary fields = blk.get("fields", Dictionary());
+		Dictionary eff_field = fields.get("EFFECT", Dictionary());
+		String effect = eff_field.get("0", "PITCH");
+		String val = _input_to_expr(p_block_id, "VALUE", p_blocks);
+		return ind + "# sound_changeeffectby: " + effect + " by " + val + "\n";
+	}
+	if (opcode == "sound_seteffectto") {
+		Dictionary fields = blk.get("fields", Dictionary());
+		Dictionary eff_field = fields.get("EFFECT", Dictionary());
+		String effect = eff_field.get("0", "PITCH");
+		String val = _input_to_expr(p_block_id, "VALUE", p_blocks);
+		return ind + "# sound_seteffectto: " + effect + " = " + val + "\n";
+	}
+	if (opcode == "sound_cleareffects") {
+		return ind + "# sound_cleareffects: reset all audio effects\n";
 	}
 
 	// --- Control ---
@@ -483,12 +601,59 @@ String ScratchConverter::_block_to_gdscript(const String &p_block_id, const Dict
 		return ind + "while not (" + cond + "):\n" +
 				_indent(p_indent + 1) + "await get_tree().process_frame\n";
 	}
+	if (opcode == "control_repeat_until") {
+		String cond = _input_to_expr(p_block_id, "CONDITION", p_blocks);
+		Dictionary inputs = blk.get("inputs", Dictionary());
+		String body;
+		if (inputs.has("SUBSTACK")) {
+			Array substack = inputs["SUBSTACK"];
+			if (substack.size() > 1 && substack[1].get_type() == Variant::STRING) {
+				String sub_id = substack[1];
+				String cur = sub_id;
+				while (!cur.is_empty()) {
+					body += _block_to_gdscript(cur, p_blocks, p_indent + 1);
+					if (!p_blocks.has(cur)) {
+						break;
+					}
+					Dictionary cb = p_blocks[cur];
+					Variant nxt = cb.get("next", Variant());
+					cur = (nxt.get_type() == Variant::STRING) ? String(nxt) : String();
+				}
+			}
+		}
+		body += _indent(p_indent + 1) + "await get_tree().process_frame\n";
+		return ind + "while not (" + cond + "):\n" + body;
+	}
+	if (opcode == "control_create_clone_of") {
+		String target = _input_to_expr(p_block_id, "CLONE_OPTION", p_blocks);
+		if (target == "\"_myself_\"" || target.is_empty()) {
+			return ind + "var _clone = duplicate()\n" +
+					ind + "get_parent().add_child(_clone)\n";
+		}
+		return ind + "if has_node(\"../\" + " + target + "):\n" +
+				_indent(p_indent + 1) + "var _clone = get_node(\"../\" + " + target + ").duplicate()\n" +
+				_indent(p_indent + 1) + "get_parent().add_child(_clone)\n";
+	}
+	if (opcode == "control_delete_this_clone") {
+		return ind + "queue_free()\n";
+	}
 
 	// --- Operators ---
 	// Operator blocks are expression nodes, not statement nodes.
 	// They should be handled by _input_to_expr, but if they appear at top level as no-ops, emit a comment.
 	if (opcode.begins_with("operator_")) {
 		return ind + "# (operator expression: " + opcode + ")\n";
+	}
+
+	// --- Events (broadcast / receive) ---
+	if (opcode == "event_broadcast") {
+		String msg = _input_to_expr(p_block_id, "BROADCAST_INPUT", p_blocks);
+		return ind + "get_tree().call_group(\"scratchtargets\", \"_on_broadcast\", " + msg + ")\n";
+	}
+	if (opcode == "event_broadcastandwait") {
+		String msg = _input_to_expr(p_block_id, "BROADCAST_INPUT", p_blocks);
+		return ind + "get_tree().call_group(\"scratchtargets\", \"_on_broadcast\", " + msg + ")\n" +
+				ind + "await get_tree().process_frame\n";
 	}
 
 	// --- Data (variables) ---
@@ -513,13 +678,71 @@ String ScratchConverter::_block_to_gdscript(const String &p_block_id, const Dict
 		return ind + "# " + opcode + " " + var_name + "\n";
 	}
 
+	// --- Data: lists ---
+	if (opcode == "data_addtolist") {
+		Dictionary fields = blk.get("fields", Dictionary());
+		Dictionary list_field = fields.get("LIST", Dictionary());
+		String list_name = list_field.get("0", "list");
+		String item = _input_to_expr(p_block_id, "ITEM", p_blocks);
+		return ind + "_list_" + list_name.replace(" ", "_") + ".append(" + item + ")\n";
+	}
+	if (opcode == "data_deleteoflist") {
+		Dictionary fields = blk.get("fields", Dictionary());
+		Dictionary list_field = fields.get("LIST", Dictionary());
+		String list_name = list_field.get("0", "list");
+		String idx = _input_to_expr(p_block_id, "INDEX", p_blocks);
+		return ind + "_list_" + list_name.replace(" ", "_") + ".remove_at(int(" + idx + ") - 1)\n";
+	}
+	if (opcode == "data_deletealloflist") {
+		Dictionary fields = blk.get("fields", Dictionary());
+		Dictionary list_field = fields.get("LIST", Dictionary());
+		String list_name = list_field.get("0", "list");
+		return ind + "_list_" + list_name.replace(" ", "_") + ".clear()\n";
+	}
+	if (opcode == "data_insertatlist") {
+		Dictionary fields = blk.get("fields", Dictionary());
+		Dictionary list_field = fields.get("LIST", Dictionary());
+		String list_name = list_field.get("0", "list");
+		String item = _input_to_expr(p_block_id, "ITEM", p_blocks);
+		String idx = _input_to_expr(p_block_id, "INDEX", p_blocks);
+		return ind + "_list_" + list_name.replace(" ", "_") + ".insert(int(" + idx + ") - 1, " + item + ")\n";
+	}
+	if (opcode == "data_replaceitemoflist") {
+		Dictionary fields = blk.get("fields", Dictionary());
+		Dictionary list_field = fields.get("LIST", Dictionary());
+		String list_name = list_field.get("0", "list");
+		String item = _input_to_expr(p_block_id, "ITEM", p_blocks);
+		String idx = _input_to_expr(p_block_id, "INDEX", p_blocks);
+		return ind + "_list_" + list_name.replace(" ", "_") + "[int(" + idx + ") - 1] = " + item + "\n";
+	}
+	if (opcode == "data_showlist" || opcode == "data_hidelist") {
+		Dictionary fields = blk.get("fields", Dictionary());
+		Dictionary list_field = fields.get("LIST", Dictionary());
+		String list_name = list_field.get("0", "list");
+		return ind + "# " + opcode + ": " + list_name + "\n";
+	}
+
 	// --- Sensing ---
+	if (opcode == "sensing_askandwait") {
+		String question = _input_to_expr(p_block_id, "QUESTION", p_blocks);
+		return ind + "var _answer = await _ask_dialog(" + question + ")\n";
+	}
 	if (opcode == "sensing_resettimer") {
-		return ind + "# reset timer\n";
+		return ind + "_timer_start = Time.get_ticks_msec() * 0.001\n";
+	}
+	if (opcode == "sensing_touchingobject") {
+		String obj = _input_to_expr(p_block_id, "TOUCHINGOBJECTMENU", p_blocks);
+		return ind + "# sensing_touchingobject: " + obj + " — use overlaps_body() on an Area2D\n";
+	}
+	if (opcode == "sensing_touchingcolor") {
+		return ind + "# sensing_touchingcolor: color collision not supported in Godot\n";
+	}
+	if (opcode == "sensing_coloristouchingcolor") {
+		return ind + "# sensing_coloristouchingcolor: color-to-color collision not supported in Godot\n";
 	}
 
 	// --- Fallback ---
-	return ind + "# TODO: " + opcode + "\n";
+	return ind + "# " + opcode + " (not converted)\n";
 }
 
 String ScratchConverter::_input_to_expr(const String &p_block_id, const String &p_input_name, const Dictionary &p_blocks) {
@@ -643,8 +866,22 @@ String ScratchConverter::_input_to_expr(const String &p_block_id, const String &
 				if (math_op == "tan") {
 					return "tan(deg_to_rad(" + num + "))";
 				}
-				if (math_op == "log") {
+				if (math_op == "asin") {
+					return "rad_to_deg(asin(" + num + "))";
+				}
+				if (math_op == "acos") {
+					return "rad_to_deg(acos(" + num + "))";
+				}
+				if (math_op == "atan") {
+					return "rad_to_deg(atan(" + num + "))";
+				}
+				if (math_op == "ln") {
+					// GDScript log() is the natural logarithm
 					return "log(" + num + ")";
+				}
+				if (math_op == "log") {
+					// Scratch "log" is base-10; convert using change-of-base
+					return "(log(" + num + ") / log(10.0))";
 				}
 				if (math_op == "e ^") {
 					return "exp(" + num + ")";
@@ -652,7 +889,136 @@ String ScratchConverter::_input_to_expr(const String &p_block_id, const String &
 				if (math_op == "10 ^") {
 					return "pow(10.0, " + num + ")";
 				}
+				if (math_op == "2 ^") {
+					return "pow(2.0, " + num + ")";
+				}
 				return "(" + num + " /* " + math_op + " */)";
+			}
+			if (opcode == "operator_letter_of") {
+				String letter_idx = _input_to_expr(inner_str, "LETTER", p_blocks);
+				String str_val = _input_to_expr(inner_str, "STRING", p_blocks);
+				return "(str(" + str_val + ")[clamp(int(" + letter_idx + ") - 1, 0, len(str(" + str_val + ")) - 1)])";
+			}
+			if (opcode == "operator_contains") {
+				String a = _input_to_expr(inner_str, "STRING1", p_blocks);
+				String b = _input_to_expr(inner_str, "STRING2", p_blocks);
+				return "(str(" + a + ").find(str(" + b + ")) >= 0)";
+			}
+			if (opcode == "operator_mod") {
+				String a = _input_to_expr(inner_str, "NUM1", p_blocks);
+				String b = _input_to_expr(inner_str, "NUM2", p_blocks);
+				return "fmod(float(" + a + "), float(" + b + "))";
+			}
+			if (opcode == "operator_round") {
+				String n = _input_to_expr(inner_str, "NUM", p_blocks);
+				return "round(float(" + n + "))";
+			}
+			if (opcode == "motion_goto_menu") {
+				Dictionary rep_fields = rep.get("fields", Dictionary());
+				Dictionary to_field = rep_fields.get("TO", Dictionary());
+				String target = to_field.get("0", "_random_");
+				return "\"" + target.replace("\\", "\\\\").replace("\"", "\\\"") + "\"";
+			}
+			if (opcode == "motion_pointtowards_menu") {
+				Dictionary rep_fields = rep.get("fields", Dictionary());
+				Dictionary towards_field = rep_fields.get("TOWARDS", Dictionary());
+				String target = towards_field.get("0", "_mouse_");
+				return "\"" + target.replace("\\", "\\\\").replace("\"", "\\\"") + "\"";
+			}
+			if (opcode == "looks_backdrops") {
+				Dictionary rep_fields = rep.get("fields", Dictionary());
+				Dictionary bd_field = rep_fields.get("BACKDROP", Dictionary());
+				String backdrop = bd_field.get("0", "backdrop1");
+				return "\"" + backdrop.replace("\\", "\\\\").replace("\"", "\\\"") + "\"";
+			}
+			if (opcode == "looks_costume") {
+				Dictionary rep_fields = rep.get("fields", Dictionary());
+				Dictionary costume_field = rep_fields.get("COSTUME", Dictionary());
+				String costume = costume_field.get("0", "costume1");
+				return "\"" + costume.replace("\\", "\\\\").replace("\"", "\\\"") + "\"";
+			}
+			if (opcode == "sensing_answer") {
+				return "_answer";
+			}
+			if (opcode == "sensing_loudness") {
+				return "0.0 /* microphone input not supported */";
+			}
+			if (opcode == "sensing_username") {
+				return "\"player\"";
+			}
+			if (opcode == "sensing_dayssince2000") {
+				return "(Time.get_unix_time_from_system() / 86400.0 - 10957.0)";
+			}
+			if (opcode == "sensing_current") {
+				Dictionary rep_fields = rep.get("fields", Dictionary());
+				Dictionary current_field = rep_fields.get("CURRENTMENU", Dictionary());
+				String component = current_field.get("0", "YEAR");
+				if (component == "YEAR") {
+					return "Time.get_date_dict_from_system()[\"year\"]";
+				} else if (component == "MONTH") {
+					return "Time.get_date_dict_from_system()[\"month\"]";
+				} else if (component == "DATE") {
+					return "Time.get_date_dict_from_system()[\"day\"]";
+				} else if (component == "DAYOFWEEK") {
+					return "Time.get_date_dict_from_system()[\"weekday\"]";
+				} else if (component == "HOUR") {
+					return "Time.get_time_dict_from_system()[\"hour\"]";
+				} else if (component == "MINUTE") {
+					return "Time.get_time_dict_from_system()[\"minute\"]";
+				} else if (component == "SECOND") {
+					return "Time.get_time_dict_from_system()[\"second\"]";
+				}
+				return "0";
+			}
+			if (opcode == "sensing_of") {
+				Dictionary rep_fields = rep.get("fields", Dictionary());
+				Dictionary prop_field = rep_fields.get("PROPERTY", Dictionary());
+				String property = prop_field.get("0", "x position");
+				String target = _input_to_expr(inner_str, "OBJECT", p_blocks);
+				if (property == "x position") {
+					return "(get_node_or_null(\"../\" + " + target + ").position.x if has_node(\"../\" + " + target + ") else 0.0)";
+				} else if (property == "y position") {
+					return "(-get_node_or_null(\"../\" + " + target + ").position.y if has_node(\"../\" + " + target + ") else 0.0)";
+				} else if (property == "direction") {
+					return "(get_node_or_null(\"../\" + " + target + ").rotation_degrees + 90.0 if has_node(\"../\" + " + target + ") else 0.0)";
+				} else if (property == "size") {
+					return "(get_node_or_null(\"../\" + " + target + ").scale.x * 100.0 if has_node(\"../\" + " + target + ") else 100.0)";
+				}
+				return "0 /* sensing_of: " + property + " */";
+			}
+			if (opcode == "sensing_distanceto") {
+				String target = _input_to_expr(inner_str, "DISTANCETOMENU", p_blocks);
+				if (target == "\"_mouse_\"") {
+					return "position.distance_to(get_viewport().get_mouse_position())";
+				}
+				return "(position.distance_to(get_node_or_null(\"../\" + " + target + ").position) if has_node(\"../\" + " + target + ") else 0.0)";
+			}
+			if (opcode == "data_itemoflist") {
+				Dictionary rep_fields = rep.get("fields", Dictionary());
+				Dictionary list_field = rep_fields.get("LIST", Dictionary());
+				String list_name = list_field.get("0", "list");
+				String idx = _input_to_expr(inner_str, "INDEX", p_blocks);
+				return "_list_" + list_name.replace(" ", "_") + "[int(" + idx + ") - 1]";
+			}
+			if (opcode == "data_itemnumoflist") {
+				Dictionary rep_fields = rep.get("fields", Dictionary());
+				Dictionary list_field = rep_fields.get("LIST", Dictionary());
+				String list_name = list_field.get("0", "list");
+				String item = _input_to_expr(inner_str, "ITEM", p_blocks);
+				return "(_list_" + list_name.replace(" ", "_") + ".find(" + item + ") + 1)";
+			}
+			if (opcode == "data_lengthoflist") {
+				Dictionary rep_fields = rep.get("fields", Dictionary());
+				Dictionary list_field = rep_fields.get("LIST", Dictionary());
+				String list_name = list_field.get("0", "list");
+				return "_list_" + list_name.replace(" ", "_") + ".size()";
+			}
+			if (opcode == "data_listcontainsitem") {
+				Dictionary rep_fields = rep.get("fields", Dictionary());
+				Dictionary list_field = rep_fields.get("LIST", Dictionary());
+				String list_name = list_field.get("0", "list");
+				String item = _input_to_expr(inner_str, "ITEM", p_blocks);
+				return "_list_" + list_name.replace(" ", "_") + ".has(" + item + ")";
 			}
 			if (opcode == "sensing_keypressed") {
 				String key = _input_to_expr(inner_str, "KEY_OPTION", p_blocks);
@@ -665,7 +1031,7 @@ String ScratchConverter::_input_to_expr(const String &p_block_id, const String &
 				return "get_viewport().get_mouse_position().x";
 			}
 			if (opcode == "sensing_mousey") {
-				return "get_viewport().get_mouse_position().y";
+				return "(-get_viewport().get_mouse_position().y)";
 			}
 			if (opcode == "sensing_timer") {
 				return "Time.get_ticks_msec() / 1000.0";
@@ -778,10 +1144,16 @@ Error ScratchConverter::_write_script(const String &p_path, const String &p_scri
 // ---------------------------------------------------------------------------
 
 String ScratchConverter::_generate_tscn(const Array &p_targets, const String &p_base_dir) {
-	// Count total nodes: 1 root + N targets
-	int node_count = 1 + p_targets.size();
+	// Count total load steps: scripts + 1 for the scene itself
+	int load_steps = 1;
+	for (int i = 0; i < p_targets.size(); i++) {
+		Dictionary tgt = p_targets[i];
+		if (tgt.get("has_script", false)) {
+			load_steps++;
+		}
+	}
 	String out;
-	out += "[gd_scene load_steps=" + itos(node_count) + " format=3 uid=\"uid://scratch_converted\"]\n\n";
+	out += "[gd_scene load_steps=" + itos(load_steps) + " format=3 uid=\"uid://scratch_converted\"]\n\n";
 
 	// External resource entries for scripts
 	int res_idx = 1;
@@ -791,7 +1163,7 @@ String ScratchConverter::_generate_tscn(const Array &p_targets, const String &p_
 		bool has_script = tgt.get("has_script", false);
 		if (has_script) {
 			String script_path = tgt.get("script_path", "");
-			out += "[ext_resource type=\"Script\" path=\"" + script_path + "\" id=" + itos(res_idx) + "]\n";
+			out += "[ext_resource type=\"Script\" path=\"" + script_path + "\" id=\"" + itos(res_idx) + "\"]\n";
 			script_res_ids.push_back(res_idx);
 			res_idx++;
 		} else {
@@ -817,13 +1189,13 @@ String ScratchConverter::_generate_tscn(const Array &p_targets, const String &p_
 		if (is_stage) {
 			out += "[node name=\"" + name + "\" type=\"Node2D\" parent=\".\"]\n";
 		} else {
-			out += "[node name=\"" + name + "\" type=\"Sprite2D\" parent=\".\"]\n";
+			out += "[node name=\"" + name + "\" type=\"AnimatedSprite2D\" parent=\".\"]\n";
 			out += "position = Vector2(" + rtos(x) + ", " + rtos(-y) + ")\n";
 			out += "scale = Vector2(" + rtos(size / 100.0) + ", " + rtos(size / 100.0) + ")\n";
 			out += "visible = " + String(visible ? "true" : "false") + "\n";
 		}
 		if (script_id >= 0) {
-			out += "script = ExtResource(" + itos(script_id) + ")\n";
+			out += "script = ExtResource(\"" + itos(script_id) + "\")\n";
 		}
 		out += "\n";
 	}

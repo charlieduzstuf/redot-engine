@@ -275,8 +275,40 @@ String GDevelopConverter::_event_to_gdscript(const Dictionary &p_event, int p_in
 		return result;
 	}
 
+	if (type == "BuiltinCommonInstructions::JsCode") {
+		String js_code = p_event.get("inlineCode", "");
+		String result = ind + "# JsCode (JavaScript cannot run in GDScript):\n";
+		Vector<String> js_lines = js_code.split("\n");
+		for (int li = 0; li < js_lines.size(); li++) {
+			result += ind + "# " + js_lines[li] + "\n";
+		}
+		return result;
+	}
+
+	if (type == "BuiltinCommonInstructions::Link") {
+		String include_file = p_event.get("includeFiles", Array()).size() > 0 ? String(p_event.get("includeFiles", Array())[0]) : "";
+		return ind + "# Link: external events from " + include_file + " (include manually)\n";
+	}
+
+	if (type == "BuiltinCommonInstructions::Once") {
+		static int once_counter = 0;
+		once_counter++;
+		String once_key = "once_" + itos(once_counter);
+		Array actions = p_event.get("actions", Array());
+		Array sub_events = p_event.get("events", Array());
+		String result = ind + "if not _once_flags.get(" + _gd_str(once_key) + ", false):\n";
+		result += _gd_indent(p_indent + 1) + "_once_flags[" + _gd_str(once_key) + "] = true\n";
+		for (int ai = 0; ai < actions.size(); ai++) {
+			result += _action_to_stmt(actions[ai], p_indent + 1);
+		}
+		for (int si = 0; si < sub_events.size(); si++) {
+			result += _event_to_gdscript(sub_events[si], p_indent + 1);
+		}
+		return result;
+	}
+
 	// Unknown event type
-	return ind + "# TODO: unsupported event type: " + type + "\n";
+	return ind + "# " + type + " (event type not converted)\n";
 }
 
 String GDevelopConverter::_condition_to_expr(const Dictionary &p_condition) {
@@ -325,6 +357,38 @@ String GDevelopConverter::_condition_to_expr(const Dictionary &p_condition) {
 		String op = _gdparam(params, 1, "==");
 		String anim = _gdparam(params, 2, "");
 		expr = obj.replace(" ", "_") + ".animation " + op + " " + _gd_str(anim);
+	} else if (type == "ObjectIsVisible") {
+		String obj = _gdparam(params, 0, "object");
+		expr = "$" + obj.replace(" ", "_") + ".visible";
+	} else if (type == "MouseButtonPressed" || type == "MouseButtonDown") {
+		String button = _gdparam(params, 0, "Left");
+		String gd_btn = "MOUSE_BUTTON_LEFT";
+		if (button == "Right") {
+			gd_btn = "MOUSE_BUTTON_RIGHT";
+		} else if (button == "Middle") {
+			gd_btn = "MOUSE_BUTTON_MIDDLE";
+		}
+		expr = "Input.is_mouse_button_pressed(" + gd_btn + ")";
+	} else if (type == "NumberOfObjectsCondition") {
+		String obj = _gdparam(params, 0, "object");
+		String op = _gdparam(params, 1, "==");
+		String count = _gdparam(params, 2, "0");
+		expr = "get_tree().get_nodes_in_group(" + _gd_str(obj) + ").size() " + op + " " + count;
+	} else if (type == "CompareTimer") {
+		String timer_name = _gdparam(params, 0, "timer");
+		String op = _gdparam(params, 1, ">=");
+		String val = _gdparam(params, 2, "0");
+		expr = timer_name.replace(" ", "_") + "_elapsed " + op + " " + val;
+	} else if (type == "StringContains") {
+		String haystack = _gdparam(params, 0, "");
+		String needle = _gdparam(params, 1, "");
+		expr = "(" + haystack + ").contains(" + needle + ")";
+	} else if (type == "VariableOfObject" || type == "VarObject") {
+		String obj = _gdparam(params, 0, "object");
+		String var_name = _gdparam(params, 1, "variable");
+		String op = _gdparam(params, 2, "==");
+		String val = _gdparam(params, 3, "0");
+		expr = obj.replace(" ", "_") + "." + var_name.replace(" ", "_") + " " + op + " " + val;
 	} else {
 		// Generic fallback: emit the condition type as a comment placeholder
 		expr = "true /* condition: " + type + " */";
@@ -393,26 +457,65 @@ String GDevelopConverter::_action_to_stmt(const Dictionary &p_action, int p_inde
 	}
 	if (type == "PlaySound") {
 		String sound = _gdparam(params, 0, "");
-		return ind + "# play sound " + _gd_str(sound) + "\n";
-	}
-	if (type == "ChangeScene") {
-		String scene = _gdparam(params, 0, "");
-		return ind + "get_tree().change_scene_to_file(" + _gd_str(scene + ".tscn") + ")\n";
+		String safe_sound = sound.get_file().get_basename().replace(" ", "_");
+		if (safe_sound.is_empty()) {
+			safe_sound = "SoundPlayer";
+		}
+		return ind + "# PlaySound: " + _gd_str(sound) + "\n" +
+				ind + "if has_node(" + _gd_str(safe_sound) + "):\n" +
+				_gd_indent(p_indent + 1) + "$" + safe_sound + ".play()\n";
 	}
 	if (type == "DeleteObject") {
 		String obj = _gdparam(params, 0, "object");
 		return ind + obj.replace(" ", "_") + ".queue_free()\n";
 	}
-	if (type == "CreateObject") {
+	if (type == "CreateObject" || type == "CreateObjectFromGroupName") {
 		String obj = _gdparam(params, 0, "object");
 		String layer = _gdparam(params, 1, "");
 		String x = _gdparam(params, 2, "0");
 		String y = _gdparam(params, 3, "0");
-		return ind + "# create object " + obj + " at (" + x + ", " + y + ") layer=" + layer + "\n";
+		String safe_obj = obj.replace(" ", "_");
+		return ind + "var _new_" + safe_obj + " = preload(\"res://\" + " + _gd_str(obj + ".tscn") + ").instantiate()\n" +
+				ind + "add_child(_new_" + safe_obj + ")\n" +
+				ind + "_new_" + safe_obj + ".position = Vector2(" + x + ", " + y + ")\n";
+	}
+	if (type == "ModVarScene" || type == "ModVarSceneNumber") {
+		String var_name = _gdparam(params, 0, "variable");
+		String op = _gdparam(params, 1, "+");
+		String val = _gdparam(params, 2, "0");
+		return ind + var_name.replace(" ", "_") + " " + op + "= " + val + "\n";
+	}
+	if (type == "SetObjectVariable" || type == "SetVariableOfObject") {
+		String obj = _gdparam(params, 0, "object");
+		String var_name = _gdparam(params, 1, "variable");
+		String op = _gdparam(params, 2, "=");
+		String val = _gdparam(params, 3, "0");
+		if (op == "=" || op == "") {
+			return ind + obj.replace(" ", "_") + ".set_meta(" + _gd_str(var_name) + ", " + val + ")\n";
+		}
+		return ind + obj.replace(" ", "_") + ".set_meta(" + _gd_str(var_name) + ", " +
+				obj.replace(" ", "_") + ".get_meta(" + _gd_str(var_name) + ", 0) " + op + " " + val + ")\n";
+	}
+	if (type == "SetFullscreen" || type == "ToggleFullscreen") {
+		return ind + "# " + type + ": use DisplayServer.window_set_mode() to toggle fullscreen\n";
+	}
+	if (type == "StopCurrentMusicChannel") {
+		String channel = _gdparam(params, 0, "0");
+		return ind + "# StopCurrentMusicChannel: stop music on channel " + channel + "\n" +
+				ind + "if has_node(\"Music\"):\n" +
+				_gd_indent(p_indent + 1) + "$Music.stop()\n";
+	}
+	if (type == "PlayMusic" || type == "PlaySoundOnChannel") {
+		String sound = _gdparam(params, 0, "");
+		return ind + "# PlayMusic/PlaySound: " + sound + "\n";
+	}
+	if (type == "ChangeScene") {
+		String scene = _gdparam(params, 0, "");
+		return ind + "get_tree().change_scene_to_file(" + _gd_str("res://" + scene + ".tscn") + ")\n";
 	}
 
 	// Fallback
-	return ind + "# TODO action: " + type + "\n";
+	return ind + "# " + type + " (not converted)\n";
 }
 
 // ---------------------------------------------------------------------------
@@ -430,7 +533,7 @@ String GDevelopConverter::_generate_layout_tscn(const Dictionary &p_layout, cons
 	out += "[gd_scene load_steps=" + itos(load_steps) + " format=3]\n\n";
 
 	// Script resource
-	out += "[ext_resource type=\"Script\" path=\"" + p_script_path + "\" id=1]\n\n";
+	out += "[ext_resource type=\"Script\" path=\"" + p_script_path + "\" id=\"1\"]\n\n";
 
 	// Build a map of object name → type for quick lookup
 	HashMap<String, String> obj_types;
@@ -443,7 +546,7 @@ String GDevelopConverter::_generate_layout_tscn(const Dictionary &p_layout, cons
 
 	// Root node with the event script attached
 	out += "[node name=\"" + layout_name.replace(" ", "_") + "\" type=\"Node2D\"]\n";
-	out += "script = ExtResource(1)\n\n";
+	out += "script = ExtResource(\"1\")\n\n";
 
 	// Place instances
 	for (int ii = 0; ii < instances.size(); ii++) {
