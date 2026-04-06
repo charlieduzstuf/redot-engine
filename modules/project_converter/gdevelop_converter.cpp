@@ -123,7 +123,7 @@ Error GDevelopConverter::convert(const String &p_gdg_path, const String &p_outpu
 		if (sf.is_valid()) {
 			sf->store_string(script_content);
 		} else {
-			print_warning("GDevelopConverter: could not write script: " + script_path);
+			WARN_PRINT("GDevelopConverter: could not write script: " + script_path);
 		}
 
 		// Generate .tscn
@@ -286,7 +286,8 @@ String GDevelopConverter::_event_to_gdscript(const Dictionary &p_event, int p_in
 	}
 
 	if (type == "BuiltinCommonInstructions::Link") {
-		String include_file = p_event.get("includeFiles", Array()).size() > 0 ? String(p_event.get("includeFiles", Array())[0]) : "";
+		Array include_files = p_event.get("includeFiles", Array());
+		String include_file = include_files.size() > 0 ? String(include_files[0]) : "";
 		return ind + "# Link: external events from " + include_file + " (include manually)\n";
 	}
 
@@ -597,7 +598,7 @@ Error GDevelopConverter::_copy_resources(const String &p_project_dir, const Stri
 		Error fe = OK;
 		Ref<FileAccess> fa_src = FileAccess::open(src, FileAccess::READ, &fe);
 		if (fa_src.is_null()) {
-			print_warning("GDevelopConverter: resource not found: " + src);
+			WARN_PRINT("GDevelopConverter: resource not found: " + src);
 			continue;
 		}
 		PackedByteArray data = fa_src->get_buffer(fa_src->get_length());
@@ -610,7 +611,7 @@ Error GDevelopConverter::_copy_resources(const String &p_project_dir, const Stri
 
 		Ref<FileAccess> fa_dst = FileAccess::open(dst, FileAccess::WRITE);
 		if (fa_dst.is_null()) {
-			print_warning("GDevelopConverter: cannot write resource: " + dst);
+			WARN_PRINT("GDevelopConverter: cannot write resource: " + dst);
 			continue;
 		}
 		fa_dst->store_buffer(data);

@@ -35,7 +35,6 @@
 #ifdef TOOLS_ENABLED
 #include "editor/editor_node.h"
 #include "editor/plugins/editor_plugin.h"
-#include "editor/plugins/editor_plugins.h"
 #include "project_converter_plugin.h"
 #endif // TOOLS_ENABLED
 

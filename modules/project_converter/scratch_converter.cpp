@@ -115,7 +115,7 @@ Error ScratchConverter::convert(const String &p_sb3_path, const String &p_output
 
 	Array targets = project.get("targets", Array());
 	if (targets.is_empty()) {
-		print_warning("ScratchConverter: project.json has no targets");
+		WARN_PRINT("ScratchConverter: project.json has no targets");
 	}
 
 	// Build richer target descriptors for tscn generation

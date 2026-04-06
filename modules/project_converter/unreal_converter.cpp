@@ -456,7 +456,7 @@ Error UnrealConverter::convert_t3d(const String &p_t3d_path, const String &p_out
 
 	Vector<UnrealActor> actors = parse_t3d(content);
 	if (actors.is_empty()) {
-		print_warning("UnrealConverter: no actors found in " + p_t3d_path);
+		WARN_PRINT("UnrealConverter: no actors found in " + p_t3d_path);
 	}
 
 	String tscn_content = _generate_t3d_tscn(actors);
