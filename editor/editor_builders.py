@@ -140,6 +140,7 @@ const {category.capitalize()}TranslationList _{category}_translations[] = {{
 # From other branch: translation header struct
 # --------------------------------------------------------------------
 
+
 def write_translation_header(target_h, category):
     with methods.generated_wrapper(target_h) as file:
         file.write(f"""\

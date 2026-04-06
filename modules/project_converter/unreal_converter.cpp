@@ -110,15 +110,15 @@ Quaternion UnrealConverter::_parse_unreal_rotator(const String &p_value) {
 			roll = val;
 		}
 	}
-	// Convert UE Euler angles to Godot quaternion.
-	// UE rotation axes (left-handed Z-up):
+	// Convert Unreal Engine Euler angles to Godot quaternion.
+	// Unreal Engine rotation axes (left-handed Z-up):
 	//   Yaw   = rotation around Z (up)   → Godot: rotation around Y (up),   negated for handedness flip
 	//   Pitch = rotation around Y (right) → Godot: rotation around X (right), sign preserved
 	//   Roll  = rotation around X (forward) → Godot: rotation around -Z (forward = -Z), negated
 	Quaternion q_yaw(Vector3(0, 1, 0), Math::deg_to_rad(-yaw));
 	Quaternion q_pitch(Vector3(1, 0, 0), Math::deg_to_rad(pitch));
 	Quaternion q_roll(Vector3(0, 0, 1), Math::deg_to_rad(-roll));
-	// Apply in UE's intrinsic order: Yaw first, then Pitch, then Roll
+	// Apply in Unreal Engine's intrinsic order: Yaw first, then Pitch, then Roll
 	return (q_yaw * q_pitch * q_roll).normalized();
 }
 
@@ -131,9 +131,9 @@ Transform3D UnrealConverter::_parse_unreal_transform(const HashMap<String, Strin
 		Vector3 ul = _parse_unreal_vector(p_props.get("RelativeLocation", ""));
 		// Unreal (cm, left-handed Z-up): X=forward, Y=right, Z=up
 		// Godot   (m,  right-handed Y-up): X=right,   Y=up,   Z=back
-		// Mapping: Godot.X = UE.Y * 0.01
-		//          Godot.Y = UE.Z * 0.01
-		//          Godot.Z = -UE.X * 0.01
+		// Mapping: Godot.X = Unreal.Y * 0.01
+		//          Godot.Y = Unreal.Z * 0.01
+		//          Godot.Z = -Unreal.X * 0.01
 		loc = Vector3(ul.y * 0.01f, ul.z * 0.01f, -ul.x * 0.01f);
 	}
 	if (p_props.has("RelativeRotation")) {
