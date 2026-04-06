@@ -110,19 +110,15 @@ Quaternion UnrealConverter::_parse_unreal_rotator(const String &p_value) {
 			roll = val;
 		}
 	}
-	// Convert Unreal Euler (degrees, ZYX order) to a Quaternion.
-	// Unreal: Pitch=Y rotation, Yaw=Z rotation, Roll=X rotation (left-handed).
-	// We apply them in Unreal's intrinsic order: Yaw → Pitch → Roll.
-	float cy = Math::cos(Math::deg_to_rad(yaw) * 0.5f);
-	float sy = Math::sin(Math::deg_to_rad(yaw) * 0.5f);
-	float cp = Math::cos(Math::deg_to_rad(pitch) * 0.5f);
-	float sp = Math::sin(Math::deg_to_rad(pitch) * 0.5f);
-	float cr = Math::cos(Math::deg_to_rad(roll) * 0.5f);
-	float sr = Math::sin(Math::deg_to_rad(roll) * 0.5f);
-
-	Quaternion q_yaw(0, sy, 0, cy);
-	Quaternion q_pitch(0, 0, sp, cp); // Unreal pitch rotates around Y (which maps to our Z)
-	Quaternion q_roll(sr, 0, 0, cr);
+	// Convert UE Euler angles to Godot quaternion.
+	// UE rotation axes (left-handed Z-up):
+	//   Yaw   = rotation around Z (up)   → Godot: rotation around Y (up),   negated for handedness flip
+	//   Pitch = rotation around Y (right) → Godot: rotation around X (right), sign preserved
+	//   Roll  = rotation around X (forward) → Godot: rotation around -Z (forward = -Z), negated
+	Quaternion q_yaw(Vector3(0, 1, 0), Math::deg_to_rad(-yaw));
+	Quaternion q_pitch(Vector3(1, 0, 0), Math::deg_to_rad(pitch));
+	Quaternion q_roll(Vector3(0, 0, 1), Math::deg_to_rad(-roll));
+	// Apply in UE's intrinsic order: Yaw first, then Pitch, then Roll
 	return (q_yaw * q_pitch * q_roll).normalized();
 }
 
@@ -133,8 +129,12 @@ Transform3D UnrealConverter::_parse_unreal_transform(const HashMap<String, Strin
 
 	if (p_props.has("RelativeLocation")) {
 		Vector3 ul = _parse_unreal_vector(p_props.get("RelativeLocation", ""));
-		// Unreal (cm) → Godot (m): X right, Y forward (→ -Z), Z up (→ Y)
-		loc = Vector3(ul.x * 0.01f, ul.z * 0.01f, -ul.y * 0.01f);
+		// Unreal (cm, left-handed Z-up): X=forward, Y=right, Z=up
+		// Godot   (m,  right-handed Y-up): X=right,   Y=up,   Z=back
+		// Mapping: Godot.X = UE.Y * 0.01
+		//          Godot.Y = UE.Z * 0.01
+		//          Godot.Z = -UE.X * 0.01
+		loc = Vector3(ul.y * 0.01f, ul.z * 0.01f, -ul.x * 0.01f);
 	}
 	if (p_props.has("RelativeRotation")) {
 		rot = _parse_unreal_rotator(p_props.get("RelativeRotation", ""));
