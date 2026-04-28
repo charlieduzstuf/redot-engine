@@ -104,8 +104,7 @@ Error ScratchConverter::convert(const String &p_sb3_path, const String &p_output
 	zip->close();
 
 	// Parse project.json
-	String json_text;
-	json_text.parse_utf8((const char *)json_bytes.ptr(), json_bytes.size());
+	String json_text = String::utf8((const char *)json_bytes.ptr(), json_bytes.size());
 	Variant parsed = JSON::parse_string(json_text);
 	if (parsed.get_type() != Variant::DICTIONARY) {
 		print_error("ScratchConverter: project.json is not a valid JSON object");

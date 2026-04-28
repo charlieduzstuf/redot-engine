@@ -128,7 +128,7 @@ Transform3D UnrealConverter::_parse_unreal_transform(const HashMap<String, Strin
 	Quaternion rot;
 
 	if (p_props.has("RelativeLocation")) {
-		Vector3 ul = _parse_unreal_vector(p_props.get("RelativeLocation", ""));
+		Vector3 ul = _parse_unreal_vector(p_props["RelativeLocation"]);
 		// Unreal (cm, left-handed Z-up): X=forward, Y=right, Z=up
 		// Godot   (m,  right-handed Y-up): X=right,   Y=up,   Z=back
 		// Mapping: Godot.X = Unreal.Y * 0.01
@@ -137,10 +137,10 @@ Transform3D UnrealConverter::_parse_unreal_transform(const HashMap<String, Strin
 		loc = Vector3(ul.y * 0.01f, ul.z * 0.01f, -ul.x * 0.01f);
 	}
 	if (p_props.has("RelativeRotation")) {
-		rot = _parse_unreal_rotator(p_props.get("RelativeRotation", ""));
+		rot = _parse_unreal_rotator(p_props["RelativeRotation"]);
 	}
 	if (p_props.has("RelativeScale3D")) {
-		scale = _parse_unreal_vector(p_props.get("RelativeScale3D", ""));
+		scale = _parse_unreal_vector(p_props["RelativeScale3D"]);
 	}
 
 	Basis basis(rot);
@@ -402,13 +402,13 @@ String UnrealConverter::_generate_t3d_tscn(const Vector<UnrealActor> &p_actors) 
 				}
 			}
 			if (merged.has("Intensity")) {
-				float intensity = merged.get("Intensity", "1000").to_float();
+				float intensity = merged["Intensity"].to_float();
 				// Unreal intensity (lm) → Godot energy (approximate mapping)
 				out += "light_energy = " + rtos(intensity / 1000.0f) + "\n";
 			}
 			if (merged.has("LightColor")) {
 				// Format: (R=255,G=255,B=200,A=255)
-				String lc_str = merged.get("LightColor", "");
+				String lc_str = merged["LightColor"];
 				if (!lc_str.is_empty()) {
 					Vector3 rgb = _parse_unreal_vector(lc_str.replace("R=", "X=").replace("G=", "Y=").replace("B=", "Z=").replace(",A=", ",W="));
 					out += "light_color = Color(" + rtos(rgb.x / 255.0f) + ", " + rtos(rgb.y / 255.0f) + ", " + rtos(rgb.z / 255.0f) + ")\n";
@@ -425,7 +425,7 @@ String UnrealConverter::_generate_t3d_tscn(const Vector<UnrealActor> &p_actors) 
 				}
 			}
 			if (merged.has("StaticMesh")) {
-				out += "# StaticMesh: " + merged.get("StaticMesh", "") + "\n";
+				out += "# StaticMesh: " + merged["StaticMesh"] + "\n";
 			}
 		}
 

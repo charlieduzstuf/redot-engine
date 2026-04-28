@@ -653,7 +653,9 @@ Error SourceConverter::convert_smd(const String &p_smd_path, const String &p_out
 			}
 			// A vertex line starts with a bone index (integer)
 			bool is_vertex = true;
-			for (char32_t c : tokens[0]) {
+			const String &tok0 = tokens[0];
+			for (int ci = 0; ci < tok0.length(); ci++) {
+				char32_t c = tok0[ci];
 				if (!is_digit(c) && c != '-') {
 					is_vertex = false;
 					break;
